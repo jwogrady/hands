@@ -16,6 +16,6 @@ export interface JobQuestion {
   question_type: 'text' | 'textarea' | 'select' | 'checkbox'
   required: boolean
   order: number
-  options?: string[] // For select/checkbox types
+  options: string[] | null // For select/checkbox types (JSONB from DB)
   created_at: string
 }

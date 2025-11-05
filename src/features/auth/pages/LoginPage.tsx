@@ -9,6 +9,8 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false)
   const { signIn } = useAuth()
   const navigate = useNavigate()
+  const searchParams = new URLSearchParams(window.location.search)
+  const returnTo = searchParams.get('returnTo') || '/dashboard'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -21,7 +23,7 @@ export function LoginPage() {
       setError(signInError.message)
       setLoading(false)
     } else {
-      navigate({ to: '/dashboard' })
+      navigate({ to: returnTo as '/dashboard' })
     }
   }
 

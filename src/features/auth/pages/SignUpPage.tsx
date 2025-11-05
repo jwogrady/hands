@@ -11,6 +11,8 @@ export function SignUpPage() {
   const [success, setSuccess] = useState(false)
   const { signUp } = useAuth()
   const navigate = useNavigate()
+  const searchParams = new URLSearchParams(window.location.search)
+  const returnTo = searchParams.get('returnTo') || '/dashboard'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -35,9 +37,9 @@ export function SignUpPage() {
       setLoading(false)
     } else {
       setSuccess(true)
-      // Redirect to login after a short delay
+      // Redirect to login (or returnTo) after a short delay
       setTimeout(() => {
-        navigate({ to: '/login' })
+        navigate({ to: returnTo ? `/login?returnTo=${encodeURIComponent(returnTo)}` : '/login' })
       }, 2000)
     }
   }

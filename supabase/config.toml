@@ -22,7 +22,7 @@ port = 54322
 shadow_port = 54320
 # The database major version to use. This has to be the same as your remote database's. Run `SHOW
 # server_version_num;` on the remote database to check.
-major_version = 15
+major_version = 17
 
 [db.pooler]
 enabled = false
@@ -90,10 +90,9 @@ double_confirm_changes = true
 enable_confirmations = false
 
 # Use pre-defined map of phone number to OTP for testing.
-[auth.phone]
-enable_signup = true
-# Allow/disallow new user signups via SMS to your project.
+# [auth.phone]
 # enable_signup = true
+# Allow/disallow new user signups via SMS to your project.
 
 # Uncomment to customize email template
 # [auth.email.template.invite]

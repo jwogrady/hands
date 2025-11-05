@@ -30,6 +30,12 @@ Welcome to the Hands project documentation. This directory contains comprehensiv
 - **[API.md](./API.md)** - API documentation and Supabase client usage
 - **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Deployment procedures and configuration
 - **[RELEASES.md](./RELEASES.md)** - Release process and versioning
+- **[TESTING.md](./TESTING.md)** - Testing strategy and guidelines
+  - Unit testing approach
+  - Integration testing
+  - E2E testing with Playwright
+  - Coverage goals and metrics
+  - Best practices and examples
 
 ## Quick Links
 
@@ -39,6 +45,7 @@ Welcome to the Hands project documentation. This directory contains comprehensiv
 2. Read [OVERVIEW.md](./OVERVIEW.md) to understand the business context
 3. Review [ARCHITECTURE.md](./ARCHITECTURE.md) for technical details
 4. Follow [CONTRIBUTING.md](../CONTRIBUTING.md) for development workflow
+5. Review [TESTING.md](./TESTING.md) for testing guidelines and best practices
 
 ### For Product Managers
 
