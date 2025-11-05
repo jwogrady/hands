@@ -1,9 +1,16 @@
 import { render, screen } from '@testing-library/react'
-import App from '../app'
+import { HomePage } from '../features/home/pages/HomePage'
+import { RouterProvider, createRouter, createRootRoute } from '@tanstack/react-router'
 
-describe('App', () => {
+const rootRoute = createRootRoute({
+  component: () => <HomePage />,
+})
+
+const router = createRouter({ routeTree: rootRoute })
+
+describe('HomePage', () => {
   it('renders the application title', () => {
-    render(<App />)
+    render(<RouterProvider router={router} />)
     expect(screen.getByText(/Hands - Driver Screening Platform/i)).toBeInTheDocument()
   })
 })
