@@ -74,7 +74,7 @@ export function CandidateDetailPage() {
       const appsWithJobs = await Promise.all(
         appsData.map(async app => {
           const job = await getJob(app.job_id)
-          return { ...app, job }
+          return { ...app, job: job ?? undefined }
         })
       )
       setApplications(appsWithJobs)
