@@ -6,6 +6,7 @@ import { HomePage } from '@/features/home/pages/HomePage'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { ProfileCreationPage } from '@/features/profile/pages/ProfileCreationPage'
 import { EmploymentHistoryPage } from '@/features/profile/pages/EmploymentHistoryPage'
+import { CDLDrivingExperiencePage } from '@/features/profile/pages/CDLDrivingExperiencePage'
 import { BackgroundQuestionsPage } from '@/features/profile/pages/BackgroundQuestionsPage'
 import { EmergencyContactsPage } from '@/features/profile/pages/EmergencyContactsPage'
 import { DocumentsPage } from '@/features/profile/pages/DocumentsPage'
@@ -93,6 +94,16 @@ const employmentHistoryRoute = createRoute({
   component: () => (
     <ProtectedRoute>
       <EmploymentHistoryPage />
+    </ProtectedRoute>
+  ),
+})
+
+const cdlDrivingExperienceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/profile/cdl-driving-experience',
+  component: () => (
+    <ProtectedRoute>
+      <CDLDrivingExperiencePage />
     </ProtectedRoute>
   ),
 })
@@ -251,6 +262,7 @@ const routeTree = rootRoute.addChildren([
   dashboardRoute,
   profileCreateRoute,
   employmentHistoryRoute,
+  cdlDrivingExperienceRoute,
   backgroundQuestionsRoute,
   emergencyContactsRoute,
   documentsRoute,

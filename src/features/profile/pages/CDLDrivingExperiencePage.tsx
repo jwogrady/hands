@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from '@tanstack/react-router'
 import { useAuth } from '../../../hooks/useAuth'
 import {
-  getEmploymentHistory,
+  getCDLEmploymentHistory,
   addEmploymentHistory,
   updateEmploymentHistory,
   deleteEmploymentHistory,
@@ -10,11 +9,10 @@ import {
 import { DatePicker } from '../../../components/ui/DatePicker'
 import type { EmploymentHistory } from '../../../types'
 
-export function EmploymentHistoryPage() {
+export function CDLDrivingExperiencePage() {
   const { user } = useAuth()
-  const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
-  const [employmentHistory, setEmploymentHistory] = useState<EmploymentHistory[]>([])
+  const [cdlHistory, setCdlHistory] = useState<EmploymentHistory[]>([])
   const [editing, setEditing] = useState<string | null>(null)
   const [formData, setFormData] = useState<Partial<EmploymentHistory>>({
     company_name: '',
@@ -28,20 +26,18 @@ export function EmploymentHistoryPage() {
     start_date: '',
     end_date: '',
     reason_for_leaving: '',
-    cdl_required: false,
-    is_cdl_employment: false,
+    cdl_required: true,
+    is_cdl_employment: true,
   })
 
-  const loadEmploymentHistory = useCallback(async () => {
+  const loadCDLHistory = useCallback(async () => {
     if (!user) return
     setLoading(true)
     try {
-      const allHistory = await getEmploymentHistory(user.id)
-      // Only get non-CDL employment (last 3 years)
-      const regularEmployment = allHistory.filter(emp => !emp.is_cdl_employment)
-      setEmploymentHistory(regularEmployment)
+      const cdlOnly = await getCDLEmploymentHistory(user.id)
+      setCdlHistory(cdlOnly)
     } catch (error) {
-      console.error('Error loading employment history:', error)
+      console.error('Error loading CDL employment history:', error)
     } finally {
       setLoading(false)
     }
@@ -49,9 +45,26 @@ export function EmploymentHistoryPage() {
 
   useEffect(() => {
     if (user) {
-      loadEmploymentHistory()
+      loadCDLHistory()
+
+      // Check for prefilled data from employment history page
+      const prefillData = sessionStorage.getItem('cdlPrefillData')
+      if (prefillData) {
+        try {
+          const data = JSON.parse(prefillData)
+          setFormData({
+            ...data,
+            cdl_required: true,
+            is_cdl_employment: true,
+          })
+          setEditing('new')
+          sessionStorage.removeItem('cdlPrefillData')
+        } catch (error) {
+          console.error('Error parsing prefill data:', error)
+        }
+      }
     }
-  }, [user, loadEmploymentHistory])
+  }, [user, loadCDLHistory])
 
   const handleChange = (field: keyof EmploymentHistory, value: string | boolean | null) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -71,8 +84,8 @@ export function EmploymentHistoryPage() {
       start_date: '',
       end_date: '',
       reason_for_leaving: '',
-      cdl_required: false,
-      is_cdl_employment: false,
+      cdl_required: true,
+      is_cdl_employment: true,
     })
   }
 
@@ -83,7 +96,21 @@ export function EmploymentHistoryPage() {
 
   const handleCancel = () => {
     setEditing(null)
-    setFormData({})
+    setFormData({
+      company_name: '',
+      company_address_street: '',
+      company_address_city: '',
+      company_address_state: '',
+      company_address_zip: '',
+      supervisor_name: '',
+      supervisor_phone: '',
+      supervisor_email: '',
+      start_date: '',
+      end_date: '',
+      reason_for_leaving: '',
+      cdl_required: true,
+      is_cdl_employment: true,
+    })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -93,8 +120,8 @@ export function EmploymentHistoryPage() {
     try {
       const data = {
         ...formData,
-        is_cdl_employment: false, // Regular employment is never CDL
-        cdl_required: formData.cdl_required || false,
+        is_cdl_employment: true,
+        cdl_required: true,
       } as Omit<EmploymentHistory, 'id' | 'user_id' | 'created_at' | 'updated_at'>
 
       if (editing === 'new') {
@@ -103,7 +130,7 @@ export function EmploymentHistoryPage() {
         await updateEmploymentHistory(editing, data)
       }
 
-      await loadEmploymentHistory()
+      await loadCDLHistory()
       setEditing(null)
       setFormData({
         company_name: '',
@@ -117,31 +144,30 @@ export function EmploymentHistoryPage() {
         start_date: '',
         end_date: '',
         reason_for_leaving: '',
-        cdl_required: false,
-        is_cdl_employment: false,
+        cdl_required: true,
+        is_cdl_employment: true,
       })
     } catch (error) {
-      console.error('Error saving employment history:', error)
+      console.error('Error saving CDL employment history:', error)
     }
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this employment record?')) return
+    if (!confirm('Are you sure you want to delete this CDL employment record?')) return
 
     try {
       await deleteEmploymentHistory(id)
-      await loadEmploymentHistory()
+      await loadCDLHistory()
     } catch (error) {
-      console.error('Error deleting employment history:', error)
+      console.error('Error deleting CDL employment history:', error)
     }
   }
 
   const renderEmploymentForm = () => (
     <form onSubmit={handleSubmit} className="bg-white border rounded-lg p-6 space-y-4">
       <h3 className="text-lg font-semibold">
-        {editing === 'new' ? 'Add' : 'Edit'} Employment Record
+        {editing === 'new' ? 'Add' : 'Edit'} CDL Employment Record
       </h3>
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="md:col-span-2">
           <label className="block text-sm font-medium text-gray-700">Company Name *</label>
@@ -155,41 +181,42 @@ export function EmploymentHistoryPage() {
         </div>
 
         <div className="md:col-span-2">
-          <label className="block text-sm font-medium text-gray-700">Company Address Street</label>
+          <label className="block text-sm font-medium text-gray-700">Company Address</label>
           <input
             type="text"
             value={formData.company_address_street || ''}
             onChange={e => handleChange('company_address_street', e.target.value)}
+            placeholder="Street Address"
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">City</label>
           <input
             type="text"
             value={formData.company_address_city || ''}
             onChange={e => handleChange('company_address_city', e.target.value)}
+            placeholder="City"
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">State</label>
           <input
             type="text"
             value={formData.company_address_state || ''}
             onChange={e => handleChange('company_address_state', e.target.value)}
+            placeholder="State"
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">ZIP Code</label>
           <input
             type="text"
             value={formData.company_address_zip || ''}
             onChange={e => handleChange('company_address_zip', e.target.value)}
+            placeholder="ZIP Code"
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
           />
         </div>
@@ -255,41 +282,6 @@ export function EmploymentHistoryPage() {
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
           />
         </div>
-
-        <div className="md:col-span-2">
-          <label className="flex items-center">
-            <input
-              type="checkbox"
-              checked={formData.cdl_required || false}
-              onChange={e => {
-                handleChange('cdl_required', e.target.checked)
-
-                // When checked, save current form data and redirect to CDL form prefilled
-                if (e.target.checked) {
-                  // Preserve all current form data
-                  const prefilledData = {
-                    ...formData,
-                    cdl_required: true,
-                    is_cdl_employment: true,
-                  }
-
-                  // Save form data to sessionStorage for prefilling
-                  sessionStorage.setItem('cdlPrefillData', JSON.stringify(prefilledData))
-
-                  // Navigate to CDL driving experience page
-                  navigate({ to: '/profile/cdl-driving-experience' })
-                }
-              }}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            <span className="ml-2 text-sm text-gray-700">CDL was required for this position</span>
-          </label>
-          {formData.cdl_required && (
-            <p className="mt-2 text-sm text-blue-600">
-              ✓ After saving, add this to your CDL Driving Experience section
-            </p>
-          )}
-        </div>
       </div>
 
       <div className="flex justify-end space-x-3">
@@ -317,43 +309,34 @@ export function EmploymentHistoryPage() {
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-8">
       <div>
-        <h1 className="text-3xl font-bold">Employment History</h1>
+        <h1 className="text-3xl font-bold">CDL Driving Experience</h1>
         <p className="mt-2 text-gray-600">
-          Please provide your employment history for the last 3 years (non-CDL employment).
-        </p>
-        <p className="mt-1 text-sm text-gray-500">
-          For CDL driving experience, please use the{' '}
-          <button
-            onClick={() => navigate({ to: '/profile/cdl-driving-experience' })}
-            className="text-blue-600 hover:text-blue-800 underline"
-          >
-            CDL Driving Experience
-          </button>{' '}
-          section.
+          Please provide your CDL driving experience for the last 7 years. This includes any
+          employment where a Commercial Driver's License (CDL) was required.
         </p>
       </div>
 
-      {/* Last 3 Years Employment */}
+      {/* 7 Years CDL Employment */}
       <section>
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-semibold">Last 3 Years (All Employment)</h2>
+          <h2 className="text-2xl font-semibold">Last 7 Years (CDL Employment Only)</h2>
           {editing !== 'new' && (
             <button
               onClick={handleAdd}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
             >
-              Add Employment
+              Add CDL Employment
             </button>
           )}
         </div>
 
         {editing === 'new' && renderEmploymentForm()}
 
-        {employmentHistory.length === 0 && editing !== 'new' && (
-          <p className="text-gray-500 italic">No employment history added yet.</p>
+        {cdlHistory.length === 0 && editing !== 'new' && (
+          <p className="text-gray-500 italic">No CDL employment history added yet.</p>
         )}
 
-        {employmentHistory.map(employment => (
+        {cdlHistory.map(employment => (
           <div key={employment.id}>
             {editing === employment.id ? (
               renderEmploymentForm()
@@ -401,15 +384,6 @@ export function EmploymentHistoryPage() {
           </div>
         ))}
       </section>
-
-      <div className="flex justify-end">
-        <button
-          onClick={() => navigate({ to: '/profile/cdl-driving-experience' })}
-          className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-        >
-          Continue to CDL Driving Experience →
-        </button>
-      </div>
     </div>
   )
 }
