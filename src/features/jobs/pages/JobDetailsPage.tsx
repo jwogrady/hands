@@ -50,12 +50,20 @@ export function JobDetailsPage() {
       if (jobData) {
         setJob(jobData)
         const jobQuestions = await getJobQuestions(jobId)
+        console.log('Loaded questions:', jobQuestions)
         setQuestions(jobQuestions)
 
         // Initialize answers with empty strings
         const initialAnswers: Record<string, string> = {}
         jobQuestions.forEach(q => {
           initialAnswers[q.id] = ''
+          console.log(`Question ${q.id}:`, {
+            question: q.question,
+            type: q.question_type,
+            options: q.options,
+            hasOptions: !!q.options,
+            optionsLength: Array.isArray(q.options) ? q.options.length : 'not array',
+          })
         })
         setAnswers(initialAnswers)
       }
@@ -218,76 +226,145 @@ export function JobDetailsPage() {
         <form onSubmit={handleSubmit} className="bg-white border rounded-lg p-6 space-y-6">
           <h2 className="text-2xl font-semibold mb-4">Application Questions</h2>
 
-          {questions.map((question, index) => (
-            <div key={question.id}>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {index + 1}. {question.question}
-                {question.required && <span className="text-red-500 ml-1">*</span>}
-              </label>
+          {questions.map((question, index) => {
+            console.log(`Question ${index + 1}:`, question)
+            return (
+              <div key={question.id}>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {index + 1}. {question.question}
+                  {question.required && <span className="text-red-500 ml-1">*</span>}
+                </label>
 
-              {question.question_type === 'text' && (
-                <input
-                  type="text"
-                  required={question.required}
-                  value={answers[question.id] || ''}
-                  onChange={e => handleAnswerChange(question.id, e.target.value)}
-                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                />
-              )}
+                {question.question_type === 'text' && (
+                  <input
+                    type="text"
+                    required={question.required}
+                    value={answers[question.id] || ''}
+                    onChange={e => handleAnswerChange(question.id, e.target.value)}
+                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  />
+                )}
 
-              {question.question_type === 'textarea' && (
-                <textarea
-                  required={question.required}
-                  value={answers[question.id] || ''}
-                  onChange={e => handleAnswerChange(question.id, e.target.value)}
-                  rows={4}
-                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                />
-              )}
+                {question.question_type === 'textarea' && (
+                  <textarea
+                    required={question.required}
+                    value={answers[question.id] || ''}
+                    onChange={e => handleAnswerChange(question.id, e.target.value)}
+                    rows={4}
+                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  />
+                )}
 
-              {question.question_type === 'select' && question.options && (
-                <select
-                  required={question.required}
-                  value={answers[question.id] || ''}
-                  onChange={e => handleAnswerChange(question.id, e.target.value)}
-                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                >
-                  <option value="">Select an option...</option>
-                  {question.options.map((option, idx) => (
-                    <option key={idx} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              )}
+                {question.question_type === 'select' &&
+                  question.options &&
+                  Array.isArray(question.options) &&
+                  question.options.length > 0 && (
+                    <select
+                      required={question.required}
+                      value={answers[question.id] || ''}
+                      onChange={e => handleAnswerChange(question.id, e.target.value)}
+                      className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                    >
+                      <option value="">Select an option...</option>
+                      {question.options.map((option, idx) => (
+                        <option key={idx} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  )}
 
-              {question.question_type === 'checkbox' && question.options && (
-                <div className="space-y-2">
-                  {question.options.map((option, idx) => (
-                    <label key={idx} className="flex items-center">
+                {question.question_type === 'select' &&
+                  (!question.options ||
+                    !Array.isArray(question.options) ||
+                    question.options.length === 0) && (
+                    <div className="text-red-600 text-sm border border-red-300 p-2 rounded">
+                      Error: Select question missing options. Question ID: {question.id}
                       <input
-                        type="checkbox"
-                        checked={answers[question.id]?.includes(option) || false}
-                        onChange={e => {
-                          const current = answers[question.id]?.split(',').filter(Boolean) || []
-                          if (e.target.checked) {
-                            handleAnswerChange(question.id, [...current, option].join(','))
-                          } else {
-                            handleAnswerChange(
-                              question.id,
-                              current.filter(opt => opt !== option).join(',')
-                            )
-                          }
-                        }}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        type="text"
+                        required={question.required}
+                        value={answers[question.id] || ''}
+                        onChange={e => handleAnswerChange(question.id, e.target.value)}
+                        placeholder="Enter answer manually"
+                        className="w-full mt-2 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                       />
-                      <span className="ml-2 text-sm text-gray-700">{option}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
+                    </div>
+                  )}
+
+                {question.question_type === 'checkbox' &&
+                  question.options &&
+                  question.options.length > 0 && (
+                    <div className="space-y-2">
+                      {question.options.map((option, idx) => (
+                        <label key={idx} className="flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={answers[question.id]?.includes(option) || false}
+                            onChange={e => {
+                              const current = answers[question.id]?.split(',').filter(Boolean) || []
+                              if (e.target.checked) {
+                                handleAnswerChange(question.id, [...current, option].join(','))
+                              } else {
+                                handleAnswerChange(
+                                  question.id,
+                                  current.filter(opt => opt !== option).join(',')
+                                )
+                              }
+                            }}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="ml-2 text-sm text-gray-700">{option}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+
+                {question.question_type === 'checkbox' &&
+                  (!question.options || question.options.length === 0) && (
+                    <div className="flex gap-6">
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          name={`question-${question.id}`}
+                          checked={
+                            answers[question.id] === 'yes' || answers[question.id] === 'true'
+                          }
+                          onChange={() => handleAnswerChange(question.id, 'yes')}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="ml-2 text-sm text-gray-700">Yes</span>
+                      </label>
+                      <label className="flex items-center">
+                        <input
+                          type="radio"
+                          name={`question-${question.id}`}
+                          checked={
+                            answers[question.id] === 'no' || answers[question.id] === 'false'
+                          }
+                          onChange={() => handleAnswerChange(question.id, 'no')}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="ml-2 text-sm text-gray-700">No</span>
+                      </label>
+                    </div>
+                  )}
+
+                {!['text', 'textarea', 'select', 'checkbox'].includes(question.question_type) && (
+                  <div className="text-red-600 text-sm">
+                    Error: Unknown question type "{question.question_type}". Defaulting to text
+                    input.
+                    <input
+                      type="text"
+                      required={question.required}
+                      value={answers[question.id] || ''}
+                      onChange={e => handleAnswerChange(question.id, e.target.value)}
+                      className="w-full mt-2 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
+                )}
+              </div>
+            )
+          })}
 
           <div className="flex justify-end space-x-3 pt-4 border-t">
             <button

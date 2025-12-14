@@ -23,8 +23,25 @@ export async function uploadDocument(
   file: File,
   documentType: Document['document_type']
 ): Promise<Document | null> {
+  // Verify user is authenticated
+  const {
+    data: { user: authUser },
+    error: authError,
+  } = await supabase.auth.getUser()
+  if (authError || !authUser) {
+    throw new Error('User not authenticated')
+  }
+
+  // Use the authenticated user's ID (must match auth.users)
+  const authenticatedUserId = authUser.id
+
+  // Verify the userId parameter matches the authenticated user
+  if (userId !== authenticatedUserId) {
+    throw new Error('User ID mismatch')
+  }
+
   const fileExt = file.name.split('.').pop()
-  const fileName = `${userId}/${Date.now()}.${fileExt}`
+  const fileName = `${authenticatedUserId}/${Date.now()}.${fileExt}`
   const filePath = `${fileName}`
 
   // Upload file to Supabase Storage
@@ -36,15 +53,15 @@ export async function uploadDocument(
     })
 
   if (uploadError) {
-    console.error('Error uploading file:', uploadError)
-    return null
+    console.error('Error uploading file to storage:', uploadError)
+    throw new Error(`Failed to upload file: ${uploadError.message}`)
   }
 
-  // Create document record
+  // Create document record using authenticated user ID
   const { data, error } = await supabase
     .from('documents')
     .insert({
-      user_id: userId,
+      user_id: authenticatedUserId,
       document_type: documentType,
       file_name: file.name,
       file_path: filePath,
@@ -58,7 +75,15 @@ export async function uploadDocument(
     console.error('Error creating document record:', error)
     // Try to delete uploaded file if record creation fails
     await supabase.storage.from(STORAGE_BUCKET).remove([filePath])
-    return null
+
+    // Provide more helpful error message for foreign key violations
+    if (error.message?.includes('foreign key constraint') || error.code === '23503') {
+      throw new Error(
+        'User account not found. Please sign out and sign in again, or contact support if the issue persists.'
+      )
+    }
+
+    throw new Error(`Failed to create document record: ${error.message}`)
   }
 
   return data

@@ -91,11 +91,32 @@ export function EmploymentHistoryPage() {
     if (!user) return
 
     try {
+      // Validate required fields
+      if (!formData.company_name || !formData.start_date) {
+        alert('Please fill in all required fields (Company Name and Start Date)')
+        return
+      }
+
+      // Clean up the data - ensure dates are in YYYY-MM-DD format
+      // start_date is required, so it should already be validated above
+      // For optional fields, convert empty strings to null
       const data = {
-        ...formData,
+        company_name: formData.company_name.trim(),
+        start_date: formData.start_date, // Required field, already validated
+        end_date: formData.end_date || null,
+        company_address_street: formData.company_address_street || null,
+        company_address_city: formData.company_address_city || null,
+        company_address_state: formData.company_address_state || null,
+        company_address_zip: formData.company_address_zip || null,
+        supervisor_name: formData.supervisor_name || null,
+        supervisor_phone: formData.supervisor_phone || null,
+        supervisor_email: formData.supervisor_email || null,
+        reason_for_leaving: formData.reason_for_leaving || null,
         is_cdl_employment: false, // Regular employment is never CDL
         cdl_required: formData.cdl_required || false,
       } as Omit<EmploymentHistory, 'id' | 'user_id' | 'created_at' | 'updated_at'>
+
+      console.log('Submitting employment data:', data)
 
       if (editing === 'new') {
         await addEmploymentHistory(user.id, data)
@@ -120,8 +141,22 @@ export function EmploymentHistoryPage() {
         cdl_required: false,
         is_cdl_employment: false,
       })
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error saving employment history:', error)
+      const errorMessage =
+        (error instanceof Error && error.message) ||
+        (typeof error === 'object' &&
+          error !== null &&
+          'error' in error &&
+          typeof error.error === 'object' &&
+          error.error !== null &&
+          'message' in error.error &&
+          typeof error.error.message === 'string' &&
+          error.error.message) ||
+        (typeof error === 'string' ? error : JSON.stringify(error)) ||
+        'Unknown error'
+      console.error('Full error details:', JSON.stringify(error, null, 2))
+      alert(`Failed to save employment history: ${errorMessage}`)
     }
   }
 
@@ -340,7 +375,7 @@ export function EmploymentHistoryPage() {
           {editing !== 'new' && (
             <button
               onClick={handleAdd}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
             >
               Add Employment
             </button>
@@ -350,7 +385,34 @@ export function EmploymentHistoryPage() {
         {editing === 'new' && renderEmploymentForm()}
 
         {employmentHistory.length === 0 && editing !== 'new' && (
-          <p className="text-gray-500 italic">No employment history added yet.</p>
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
+            <svg
+              className="mx-auto h-12 w-12 text-gray-400 mb-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
+            </svg>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              No employment history added yet
+            </h3>
+            <p className="text-gray-600 mb-6 max-w-md mx-auto">
+              If you don't have employment history for the last 3 years, that's okay. You can skip
+              this section or add any work experience you do have.
+            </p>
+            <button
+              onClick={handleAdd}
+              className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
+            >
+              Add Employment Record
+            </button>
+          </div>
         )}
 
         {employmentHistory.map(employment => (

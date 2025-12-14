@@ -36,6 +36,18 @@ export async function addEmploymentHistory(
   userId: string,
   employment: Omit<EmploymentHistory, 'id' | 'user_id' | 'created_at' | 'updated_at'>
 ): Promise<EmploymentHistory | null> {
+  console.log('addEmploymentHistory called with userId:', userId, 'employment:', employment)
+
+  // Verify user is authenticated
+  const {
+    data: { user: authUser },
+  } = await supabase.auth.getUser()
+  if (!authUser || authUser.id !== userId) {
+    const error = new Error('Authentication failed or user ID mismatch')
+    console.error('Auth error:', error)
+    throw error
+  }
+
   const { data, error } = await supabase
     .from('employment_history')
     .insert({
@@ -47,9 +59,15 @@ export async function addEmploymentHistory(
 
   if (error) {
     console.error('Error adding employment history:', error)
-    return null
+    console.error('Error code:', error.code, 'Error message:', error.message)
+    console.error('Error details:', JSON.stringify(error, null, 2))
+    console.error('Error hint:', error.hint)
+    throw new Error(
+      `Failed to save employment history: ${error.message}${error.hint ? ` (${error.hint})` : ''}`
+    )
   }
 
+  console.log('addEmploymentHistory success:', data)
   return data
 }
 

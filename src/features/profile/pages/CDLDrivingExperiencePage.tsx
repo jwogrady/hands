@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { useAuth } from '../../../hooks/useAuth'
 import {
   getCDLEmploymentHistory,
@@ -11,6 +12,7 @@ import type { EmploymentHistory } from '../../../types'
 
 export function CDLDrivingExperiencePage() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [cdlHistory, setCdlHistory] = useState<EmploymentHistory[]>([])
   const [editing, setEditing] = useState<string | null>(null)
@@ -384,6 +386,17 @@ export function CDLDrivingExperiencePage() {
           </div>
         ))}
       </section>
+
+      {editing === null && (
+        <div className="flex justify-end">
+          <button
+            onClick={() => navigate({ to: '/dashboard' })}
+            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
+          >
+            Continue to Dashboard →
+          </button>
+        </div>
+      )}
     </div>
   )
 }

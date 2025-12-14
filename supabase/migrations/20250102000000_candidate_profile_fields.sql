@@ -16,7 +16,7 @@ ALTER TABLE profiles
 
 -- Create address_history table (for last 3 years of addresses)
 CREATE TABLE IF NOT EXISTS address_history (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   street TEXT NOT NULL,
   city TEXT NOT NULL,
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS address_history (
 
 -- Create employment_history table
 CREATE TABLE IF NOT EXISTS employment_history (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   company_name TEXT NOT NULL,
   company_address_street TEXT,
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS employment_history (
 
 -- Create background_questions table
 CREATE TABLE IF NOT EXISTS background_questions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   question_number INTEGER NOT NULL CHECK (question_number BETWEEN 1 AND 9),
   answer BOOLEAN NOT NULL,
@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS background_questions (
 
 -- Create emergency_contacts table
 CREATE TABLE IF NOT EXISTS emergency_contacts (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   full_name TEXT NOT NULL,
   address_street TEXT,
@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS emergency_contacts (
 
 -- Create documents table (metadata for uploaded documents)
 CREATE TABLE IF NOT EXISTS documents (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   document_type TEXT NOT NULL CHECK (document_type IN ('resume', 'cdl_license', 'certification', 'other')),
   file_name TEXT NOT NULL,
@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS documents (
 
 -- Create authorizations table
 CREATE TABLE IF NOT EXISTS authorizations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   authorization_type TEXT NOT NULL CHECK (authorization_type IN ('applicant_certification', 'fmcsa_clearinghouse', 'hireright_background', 'psp_authorization')),
   signed BOOLEAN NOT NULL DEFAULT FALSE,
@@ -140,17 +140,13 @@ CREATE POLICY "Managers can view address history"
 -- RLS Policies for employment_history
 CREATE POLICY "Users can manage own employment history"
   ON employment_history FOR ALL
-  USING (auth.uid() = user_id);
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 
+-- Note: is_manager() function must be created first (in 20250101000000_initial_schema.sql)
 CREATE POLICY "Managers can view employment history"
   ON employment_history FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM user_roles
-      WHERE user_roles.user_id = auth.uid()
-      AND user_roles.role = 'manager'
-    )
-  );
+  USING (public.is_manager(auth.uid()));
 
 -- RLS Policies for background_questions
 CREATE POLICY "Users can manage own background questions"

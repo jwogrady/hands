@@ -43,9 +43,23 @@ export function DocumentsPage() {
     if (file.size > MAX_FILE_SIZE) {
       return `File size must be less than ${MAX_FILE_SIZE / 1024 / 1024}MB`
     }
-    if (!ALLOWED_FILE_TYPES.includes(file.type)) {
-      return 'File type not supported. Please upload PDF or image files.'
+
+    // Check MIME type
+    const isValidMimeType = ALLOWED_FILE_TYPES.includes(file.type)
+
+    // Also check file extension as fallback (some browsers may not set MIME type correctly)
+    const fileExt = file.name.split('.').pop()?.toLowerCase()
+    const isValidExtension = fileExt && ['pdf', 'jpg', 'jpeg', 'png'].includes(fileExt)
+
+    if (!isValidMimeType && !isValidExtension) {
+      console.warn('File type validation:', {
+        fileName: file.name,
+        mimeType: file.type,
+        extension: fileExt,
+      })
+      return 'File type not supported. Please upload PDF or image files (JPG, PNG).'
     }
+
     return null
   }
 
@@ -60,11 +74,16 @@ export function DocumentsPage() {
 
     setUploading(true)
     try {
-      await uploadDocument(user.id, file, documentType)
+      const result = await uploadDocument(user.id, file, documentType)
+      if (!result) {
+        alert('Failed to upload document. Please check the console for details and try again.')
+        return
+      }
       await loadDocuments()
     } catch (error) {
       console.error('Error uploading document:', error)
-      alert('Failed to upload document. Please try again.')
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      alert(`Failed to upload document: ${errorMessage}. Please try again.`)
     } finally {
       setUploading(false)
     }
@@ -156,10 +175,14 @@ export function DocumentsPage() {
             <input
               type="file"
               id={`file-${documentType}`}
-              accept=".pdf,.jpg,.jpeg,.png"
+              accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png,image/jpg"
               onChange={e => {
-                if (e.target.files && e.target.files[0]) {
-                  handleFileSelect(e.target.files[0], documentType)
+                const fileInput = e.target
+                if (fileInput.files && fileInput.files[0]) {
+                  handleFileSelect(fileInput.files[0], documentType).then(() => {
+                    // Reset the input so the same file can be selected again
+                    fileInput.value = ''
+                  })
                 }
               }}
               className="hidden"

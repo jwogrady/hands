@@ -11,9 +11,10 @@ import { getAuthorizations } from '../../../lib/api/authorizations'
 import type { UserRole, Profile } from '../../../types'
 
 export function DashboardPage() {
-  const { user } = useAuth()
+  const { user, signOut } = useAuth()
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [userRoles, setUserRoles] = useState<UserRole[]>([])
   const [profileStatus, setProfileStatus] = useState({
     personalInfo: false,
@@ -121,20 +122,46 @@ export function DashboardPage() {
   const loadUserData = useCallback(async () => {
     if (!user) return
     setLoading(true)
+    setError(null)
     try {
       const roles = await getUserRoles(user.id)
+      console.log(
+        'Dashboard: Loaded user roles:',
+        roles,
+        'for user:',
+        user.id,
+        'email:',
+        user.email
+      )
       setUserRoles(roles)
+
+      if (roles.length === 0) {
+        console.warn('Dashboard: No roles found for user. This might indicate an RLS policy issue.')
+        setError('No roles assigned. Please contact an administrator.')
+        setLoading(false)
+        return
+      }
 
       const profile = await getProfile(user.id)
 
-      // Check each section's completion status
-      const personalInfo = checkPersonalInfoComplete(profile)
-      const employmentHistory = await checkEmploymentHistoryComplete(user.id)
-      const cdlDrivingExperience = await checkCDLDrivingExperienceComplete(user.id)
-      const backgroundQuestions = await checkBackgroundQuestionsComplete(user.id)
-      const emergencyContacts = await checkEmergencyContactsComplete(user.id)
-      const documents = await checkDocumentsComplete(user.id)
-      const authorizations = await checkAuthorizationsComplete(user.id)
+      // Check each section's completion status in parallel for better performance
+      const [
+        personalInfo,
+        employmentHistory,
+        cdlDrivingExperience,
+        backgroundQuestions,
+        emergencyContacts,
+        documents,
+        authorizations,
+      ] = await Promise.all([
+        Promise.resolve(checkPersonalInfoComplete(profile)),
+        checkEmploymentHistoryComplete(user.id),
+        checkCDLDrivingExperienceComplete(user.id),
+        checkBackgroundQuestionsComplete(user.id),
+        checkEmergencyContactsComplete(user.id),
+        checkDocumentsComplete(user.id),
+        checkAuthorizationsComplete(user.id),
+      ])
 
       setProfileStatus({
         personalInfo,
@@ -147,6 +174,18 @@ export function DashboardPage() {
       })
     } catch (error) {
       console.error('Error loading user data:', error)
+      let errorMessage = 'Failed to load dashboard data.'
+      if (error instanceof Error) {
+        errorMessage = error.message
+        // Provide helpful guidance for permission errors
+        if (
+          error.message.includes('Permission denied') ||
+          error.message.includes('verify user roles')
+        ) {
+          errorMessage += ' Try signing out and signing back in to refresh your session.'
+        }
+      }
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -165,6 +204,112 @@ export function DashboardPage() {
     return (
       <div className="max-w-6xl mx-auto p-6">
         <div className="text-center">Loading...</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-6xl mx-auto p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+          <div className="flex items-start">
+            <svg
+              className="w-5 h-5 text-red-600 mt-0.5 mr-3 flex-shrink-0"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <div className="flex-1">
+              <h3 className="font-semibold text-red-900">Error Loading Dashboard</h3>
+              <p className="text-sm text-red-800 mt-1">{error}</p>
+              <div className="mt-4 flex gap-3">
+                <button
+                  onClick={() => loadUserData()}
+                  className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm font-medium transition-colors"
+                >
+                  Retry
+                </button>
+                {error.includes('Permission denied') && (
+                  <button
+                    onClick={async () => {
+                      await signOut()
+                      navigate({ to: '/login' })
+                    }}
+                    className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 text-sm font-medium transition-colors"
+                  >
+                    Sign Out & Sign In Again
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Show manager dashboard for managers only (not candidates)
+  if (isManager && !isCandidate) {
+    return (
+      <div className="max-w-6xl mx-auto p-6">
+        <h1 className="text-3xl font-bold mb-6">Manager Dashboard</h1>
+
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Job Posting Management */}
+            <div className="bg-white border rounded-lg p-6">
+              <h2 className="text-xl font-semibold mb-4">Job Posting Management</h2>
+              <div className="space-y-3">
+                <button
+                  onClick={() => navigate({ to: '/jobs' })}
+                  className="w-full text-left px-4 py-3 border border-gray-200 rounded-md hover:bg-gray-50 hover:border-blue-300 transition-colors"
+                >
+                  <div className="font-medium text-gray-900">Manage Job Postings</div>
+                  <div className="text-sm text-gray-600 mt-1">
+                    View, create, edit, and manage job postings
+                  </div>
+                </button>
+                <button
+                  onClick={() => navigate({ to: '/jobs/create' })}
+                  className="w-full text-left px-4 py-3 border border-gray-200 rounded-md hover:bg-gray-50 hover:border-blue-300 transition-colors"
+                >
+                  <div className="font-medium text-gray-900">Create New Job Posting</div>
+                  <div className="text-sm text-gray-600 mt-1">
+                    Post a new job with custom questions
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Candidate & Application Management */}
+            <div className="bg-white border rounded-lg p-6">
+              <h2 className="text-xl font-semibold mb-4">Review & Management</h2>
+              <div className="space-y-3">
+                <button
+                  onClick={() => navigate({ to: '/manager/candidates' })}
+                  className="w-full text-left px-4 py-3 border border-gray-200 rounded-md hover:bg-gray-50 hover:border-blue-300 transition-colors"
+                >
+                  <div className="font-medium text-gray-900">Candidates Dashboard</div>
+                  <div className="text-sm text-gray-600 mt-1">
+                    View and filter candidate profiles
+                  </div>
+                </button>
+                <button
+                  onClick={() => navigate({ to: '/manager/applications' })}
+                  className="w-full text-left px-4 py-3 border border-gray-200 rounded-md hover:bg-gray-50 hover:border-blue-300 transition-colors"
+                >
+                  <div className="font-medium text-gray-900">Applications Dashboard</div>
+                  <div className="text-sm text-gray-600 mt-1">Review and manage applications</div>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     )
   }
@@ -490,63 +635,8 @@ export function DashboardPage() {
         </div>
       )}
 
-      {/* Manager Dashboard */}
-      {isManager && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Job Posting Management */}
-            <div className="bg-white border rounded-lg p-6">
-              <h2 className="text-xl font-semibold mb-4">Job Posting Management</h2>
-              <div className="space-y-3">
-                <button
-                  onClick={() => navigate({ to: '/jobs' })}
-                  className="w-full text-left px-4 py-3 border border-gray-200 rounded-md hover:bg-gray-50 hover:border-blue-300 transition-colors"
-                >
-                  <div className="font-medium text-gray-900">Manage Job Postings</div>
-                  <div className="text-sm text-gray-600 mt-1">
-                    View, create, edit, and manage job postings
-                  </div>
-                </button>
-                <button
-                  onClick={() => navigate({ to: '/jobs/create' })}
-                  className="w-full text-left px-4 py-3 border border-gray-200 rounded-md hover:bg-gray-50 hover:border-blue-300 transition-colors"
-                >
-                  <div className="font-medium text-gray-900">Create New Job Posting</div>
-                  <div className="text-sm text-gray-600 mt-1">
-                    Post a new job with custom questions
-                  </div>
-                </button>
-              </div>
-            </div>
-
-            {/* Candidate & Application Management */}
-            <div className="bg-white border rounded-lg p-6">
-              <h2 className="text-xl font-semibold mb-4">Review & Management</h2>
-              <div className="space-y-3">
-                <button
-                  onClick={() => navigate({ to: '/manager/candidates' })}
-                  className="w-full text-left px-4 py-3 border border-gray-200 rounded-md hover:bg-gray-50 hover:border-blue-300 transition-colors"
-                >
-                  <div className="font-medium text-gray-900">Candidates Dashboard</div>
-                  <div className="text-sm text-gray-600 mt-1">
-                    View and filter candidate profiles
-                  </div>
-                </button>
-                <button
-                  onClick={() => navigate({ to: '/manager/applications' })}
-                  className="w-full text-left px-4 py-3 border border-gray-200 rounded-md hover:bg-gray-50 hover:border-blue-300 transition-colors"
-                >
-                  <div className="font-medium text-gray-900">Applications Dashboard</div>
-                  <div className="text-sm text-gray-600 mt-1">Review and manage applications</div>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* No role assigned */}
-      {!isManager && !isCandidate && (
+      {!isCandidate && !isManager && userRoles.length === 0 && (
         <div className="bg-gray-50 border rounded-lg p-6 text-center">
           <p className="text-gray-600">No role assigned. Please contact an administrator.</p>
         </div>

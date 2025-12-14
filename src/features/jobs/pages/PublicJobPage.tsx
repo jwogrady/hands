@@ -1,9 +1,14 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, Link } from '@tanstack/react-router'
 import { useAuth } from '../../../hooks/useAuth'
 import { getJob, getJobQuestions } from '../../../lib/api/jobs'
 import { getProfile } from '../../../lib/api/profile'
-import type { Job, JobQuestion } from '../../../types'
+import { getEmploymentHistory, getCDLEmploymentHistory } from '../../../lib/api/employmentHistory'
+import { getBackgroundQuestions, BACKGROUND_QUESTIONS } from '../../../lib/api/backgroundQuestions'
+import { getEmergencyContacts } from '../../../lib/api/emergencyContacts'
+import { getDocuments } from '../../../lib/api/documents'
+import { getAuthorizations } from '../../../lib/api/authorizations'
+import type { Job, JobQuestion, Profile } from '../../../types'
 
 export function PublicJobPage() {
   const { isAuthenticated, user } = useAuth()
@@ -20,51 +25,119 @@ export function PublicJobPage() {
   const [profileComplete, setProfileComplete] = useState(false)
   const [checkingProfile, setCheckingProfile] = useState(false)
 
-  const checkProfileCompletion = useCallback(async () => {
-    if (!user) return
-
-    setCheckingProfile(true)
-    try {
-      const profile = await getProfile(user.id)
-      setProfileComplete(!!profile?.profile_completed_at)
-    } catch (error) {
-      console.error('Error checking profile completion:', error)
-      setProfileComplete(false)
-    } finally {
-      setCheckingProfile(false)
-    }
-  }, [user])
-
-  const loadJobDetails = useCallback(async () => {
-    if (!jobId) return
-    setLoading(true)
-    try {
-      const jobData = await getJob(jobId)
-      if (jobData && jobData.is_active) {
-        setJob(jobData)
-        const jobQuestions = await getJobQuestions(jobId)
-        setQuestions(jobQuestions)
-      }
-    } catch (error) {
-      console.error('Error loading job details:', error)
-    } finally {
-      setLoading(false)
-    }
-  }, [jobId])
-
+  // Load job details when jobId changes
   useEffect(() => {
+    const loadJobDetails = async () => {
+      if (!jobId) return
+      setLoading(true)
+      try {
+        const jobData = await getJob(jobId)
+        if (jobData && jobData.is_active) {
+          setJob(jobData)
+          const jobQuestions = await getJobQuestions(jobId)
+          setQuestions(jobQuestions)
+        }
+      } catch (error) {
+        console.error('Error loading job details:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
     if (jobId) {
       loadJobDetails()
     }
-  }, [jobId, loadJobDetails])
+  }, [jobId])
 
+  // Check profile completion when authentication state changes
+  // Uses the same logic as the dashboard to determine completion
   useEffect(() => {
+    const checkProfileCompletion = async () => {
+      if (!user) {
+        setProfileComplete(false)
+        return
+      }
+
+      setCheckingProfile(true)
+      try {
+        const profile = await getProfile(user.id)
+
+        // Check if profile_completed_at is set (explicit completion)
+        if (profile?.profile_completed_at) {
+          setProfileComplete(true)
+          setCheckingProfile(false)
+          return
+        }
+
+        // Otherwise, check all sections like the dashboard does
+        const checkPersonalInfoComplete = (profile: Profile | null): boolean => {
+          if (!profile) return false
+          return !!(
+            profile.full_name &&
+            profile.phone &&
+            profile.ssn &&
+            profile.date_of_birth &&
+            profile.present_address_street &&
+            profile.present_address_city &&
+            profile.present_address_state &&
+            profile.present_address_zip
+          )
+        }
+
+        const personalInfo = checkPersonalInfoComplete(profile)
+        const [
+          employmentHistory,
+          cdlDrivingExperience,
+          backgroundQuestions,
+          emergencyContacts,
+          documents,
+          authorizations,
+        ] = await Promise.all([
+          getEmploymentHistory(user.id)
+            .then(emp => emp.length > 0)
+            .catch(() => false),
+          getCDLEmploymentHistory(user.id)
+            .then(cdl => cdl.length > 0)
+            .catch(() => false),
+          getBackgroundQuestions(user.id)
+            .then(q => q.length === BACKGROUND_QUESTIONS.length)
+            .catch(() => false),
+          getEmergencyContacts(user.id)
+            .then(c => c.length >= 1)
+            .catch(() => false),
+          getDocuments(user.id)
+            .then(d => d.length > 0)
+            .catch(() => false),
+          getAuthorizations(user.id)
+            .then(a => a.length > 0)
+            .catch(() => false),
+        ])
+
+        // Profile is complete if all sections are complete
+        const isComplete =
+          personalInfo &&
+          employmentHistory &&
+          cdlDrivingExperience &&
+          backgroundQuestions &&
+          emergencyContacts &&
+          documents &&
+          authorizations
+
+        setProfileComplete(isComplete)
+      } catch (error) {
+        console.error('Error checking profile completion:', error)
+        setProfileComplete(false)
+      } finally {
+        setCheckingProfile(false)
+      }
+    }
+
     if (isAuthenticated && user) {
       checkProfileCompletion()
     } else {
       setProfileComplete(false)
     }
-  }, [isAuthenticated, user, checkProfileCompletion])
+  }, [isAuthenticated, user])
 
   const handleGetStarted = () => {
     if (isAuthenticated) {
@@ -152,20 +225,7 @@ export function PublicJobPage() {
                 <p className="text-gray-600">Checking profile status...</p>
               </div>
             </div>
-          ) : profileComplete ? (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">Ready to Apply?</h2>
-              <p className="text-gray-700 mb-4">
-                Your profile is complete. You can start your application now.
-              </p>
-              <button
-                onClick={handleGetStarted}
-                className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium text-lg"
-              >
-                Apply Now
-              </button>
-            </div>
-          ) : (
+          ) : !profileComplete ? (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-6">
               <div className="flex items-start">
                 <svg
@@ -194,6 +254,19 @@ export function PublicJobPage() {
                   </Link>
                 </div>
               </div>
+            </div>
+          ) : (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Ready to Apply?</h2>
+              <p className="text-gray-700 mb-4">
+                Your profile is complete. You can start your application now.
+              </p>
+              <button
+                onClick={handleGetStarted}
+                className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium text-lg"
+              >
+                Apply Now
+              </button>
             </div>
           )}
 
@@ -330,22 +403,7 @@ export function PublicJobPage() {
               Get Started - It's Free
             </button>
           </div>
-        ) : profileComplete ? (
-          <div className="bg-white rounded-lg shadow-sm border p-8 text-center">
-            <h2 className="text-2xl font-semibold text-gray-900 mb-4">
-              Ready to Start Your Application?
-            </h2>
-            <p className="text-gray-600 mb-6">
-              Your profile is complete. Continue to start your application.
-            </p>
-            <button
-              onClick={handleGetStarted}
-              className="px-8 py-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium text-lg"
-            >
-              Continue to Application
-            </button>
-          </div>
-        ) : (
+        ) : checkingProfile ? null : !profileComplete ? (
           <div className="bg-white rounded-lg shadow-sm border p-8 text-center">
             <h2 className="text-2xl font-semibold text-gray-900 mb-4">
               Complete Your Profile First
@@ -359,6 +417,21 @@ export function PublicJobPage() {
             >
               Complete Your Profile →
             </Link>
+          </div>
+        ) : (
+          <div className="bg-white rounded-lg shadow-sm border p-8 text-center">
+            <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+              Ready to Start Your Application?
+            </h2>
+            <p className="text-gray-600 mb-6">
+              Your profile is complete. Continue to start your application.
+            </p>
+            <button
+              onClick={handleGetStarted}
+              className="px-8 py-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium text-lg"
+            >
+              Apply Now
+            </button>
           </div>
         )}
       </main>

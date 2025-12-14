@@ -6,7 +6,6 @@ import {
   getAddressHistory,
   addAddressHistory,
   updateAddressHistory,
-  deleteAddressHistory,
 } from '../../../lib/api/addressHistory'
 import { DatePicker } from '../../../components/ui/DatePicker'
 import type { ProfileFormData, AddressHistory } from '../../../types'
@@ -18,10 +17,8 @@ export function ProfileCreationPage() {
   const [loading, setLoading] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [presentAddressStartDate, setPresentAddressStartDate] = useState<string>('')
-  const [livedHereMonthDay, setLivedHereMonthDay] = useState<string>('') // MM-DD format
   const [addressHistory, setAddressHistory] = useState<AddressHistory[]>([])
-  const [showAddressHistoryRequired, setShowAddressHistoryRequired] = useState(false)
-  const [addressHistoryEvaluated, setAddressHistoryEvaluated] = useState(false)
+  const [needsPreviousAddresses, setNeedsPreviousAddresses] = useState(false)
   const [previousAddressForm, setPreviousAddressForm] = useState<Partial<AddressHistory>>({
     street: '',
     city: '',
@@ -47,54 +44,29 @@ export function ProfileCreationPage() {
   const [hasCDL, setHasCDL] = useState<boolean | null>(null)
   const [plansCDLTraining, setPlansCDLTraining] = useState<boolean | null>(null)
 
-  const checkAddressHistoryRequirement = useCallback(async (): Promise<boolean> => {
-    if (!user) return false
+  // Check if current address is less than 3 years - if so, show previous address form
+  const checkIfNeedsPreviousAddresses = useCallback((moveInDate: string): boolean => {
+    if (!moveInDate) return false
 
-    const addresses = await getAddressHistory(user.id)
-    setAddressHistory(addresses)
+    const moveIn = new Date(moveInDate)
+    const today = new Date()
 
-    if (addresses.length === 0) {
-      setShowAddressHistoryRequired(true)
-      return false
+    // Calculate years between move-in and today
+    let yearsDiff = today.getFullYear() - moveIn.getFullYear()
+    const monthDiff = today.getMonth() - moveIn.getMonth()
+
+    // Adjust if we haven't reached the anniversary month yet
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < moveIn.getDate())) {
+      yearsDiff -= 1
     }
 
-    // Calculate total years of address history based on month/day
-    const now = new Date()
+    // Add fractional year for remaining months
+    const monthsRemaining = monthDiff < 0 ? monthDiff + 12 : monthDiff
+    const fractionalYear = monthsRemaining / 12
+    const totalYears = yearsDiff + fractionalYear
 
-    let totalYears = 0
-
-    for (const addr of addresses) {
-      const startDate = new Date(addr.start_date)
-      const endDate = addr.end_date ? new Date(addr.end_date) : now
-
-      // Get month/day from dates
-      const startMonth = startDate.getMonth()
-      const startDay = startDate.getDate()
-      const endMonth = endDate.getMonth()
-      const endDay = endDate.getDate()
-
-      // Calculate years between dates using month/day comparison
-      let yearsDiff = endDate.getFullYear() - startDate.getFullYear()
-
-      // Adjust if the end month/day hasn't occurred yet relative to start month/day
-      if (endMonth < startMonth || (endMonth === startMonth && endDay < startDay)) {
-        yearsDiff -= 1
-      }
-
-      // Add fractional year for the partial period
-      const startDateInEndYear = new Date(endDate.getFullYear(), startMonth, startDay)
-      const daysIntoYear =
-        (endDate.getTime() - startDateInEndYear.getTime()) / (1000 * 60 * 60 * 24)
-      const fractionalYear = daysIntoYear / 365.25
-
-      const totalPeriodYears = yearsDiff + Math.max(0, fractionalYear)
-      totalYears += totalPeriodYears
-    }
-
-    const hasEnoughHistory = totalYears >= 3
-    setShowAddressHistoryRequired(!hasEnoughHistory)
-    return hasEnoughHistory
-  }, [user])
+    return totalYears < 3
+  }, [])
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -103,15 +75,12 @@ export function ProfileCreationPage() {
       const addresses = await getAddressHistory(user.id)
       setAddressHistory(addresses)
 
-      // Find current address (no end_date) and set start date and month/day
+      // Find current address (no end_date) and set start date
       const currentAddress = addresses.find(addr => !addr.end_date)
       if (currentAddress) {
         setPresentAddressStartDate(currentAddress.start_date)
-        // Extract month/day from the date
-        const date = new Date(currentAddress.start_date)
-        const month = (date.getMonth() + 1).toString().padStart(2, '0')
-        const day = date.getDate().toString().padStart(2, '0')
-        setLivedHereMonthDay(`${month}-${day}`)
+        // Check if we need previous addresses based on current address date
+        setNeedsPreviousAddresses(checkIfNeedsPreviousAddresses(currentAddress.start_date))
       }
 
       // Prefill move-out date with most recent previous address's move-in date if form is empty
@@ -127,15 +96,6 @@ export function ProfileCreationPage() {
           ...prev,
           end_date: previousAddresses[0].start_date,
         }))
-      }
-
-      // Evaluate address history requirement if we have addresses
-      if (addresses.length > 0 || currentAddress) {
-        await checkAddressHistoryRequirement()
-      } else {
-        // If no addresses, mark as evaluated but show requirement
-        setAddressHistoryEvaluated(true)
-        setShowAddressHistoryRequired(true)
       }
 
       if (profile) {
@@ -159,7 +119,7 @@ export function ProfileCreationPage() {
     }
     loadProfile()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, checkAddressHistoryRequirement])
+  }, [user, checkIfNeedsPreviousAddresses])
 
   const handleChange = (field: keyof ProfileFormData, value: string | number | string[]) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -201,12 +161,6 @@ export function ProfileCreationPage() {
 
       await updateProfile(user.id, stepFields)
 
-      // Note: For step 2, address history is already saved when the move-in date changes
-      // Just check the requirement here to update the UI state
-      if (stepNumber === 2 && presentAddressStartDate) {
-        await checkAddressHistoryRequirement()
-      }
-
       return true
     } catch (error) {
       console.error('Error saving profile step:', error)
@@ -239,34 +193,20 @@ export function ProfileCreationPage() {
         end_date: previousAddressForm.end_date!,
       })
 
-      // Reload address history and recheck requirement
+      // Reload address history
       const updatedAddresses = await getAddressHistory(user.id)
       setAddressHistory(updatedAddresses)
-      const hasEnough = await checkAddressHistoryRequirement()
 
-      // If still less than 3 years, reset form but keep move-out date prefilled for next address
-      if (!hasEnough) {
-        // Prefill move-out date with the previous address's move-in date
-        const moveInDate = previousAddressForm.start_date
-        setPreviousAddressForm({
-          street: '',
-          city: '',
-          state: '',
-          zip: '',
-          start_date: '',
-          end_date: moveInDate || '', // Prefill with previous move-in date
-        })
-      } else {
-        // If we have enough history, clear the form completely
-        setPreviousAddressForm({
-          street: '',
-          city: '',
-          state: '',
-          zip: '',
-          start_date: '',
-          end_date: '',
-        })
-      }
+      // Reset form, prefilling move-out date with the previous address's move-in date for next entry
+      const moveInDate = previousAddressForm.start_date
+      setPreviousAddressForm({
+        street: '',
+        city: '',
+        state: '',
+        zip: '',
+        start_date: '',
+        end_date: moveInDate || '', // Prefill with previous move-in date
+      })
     } catch (error) {
       console.error('Error adding previous address:', error)
       alert('Error adding address. Please try again.')
@@ -484,307 +424,201 @@ export function ProfileCreationPage() {
                 )}
               </div>
               <div className="md:col-span-2">
-                <label
-                  htmlFor="lived_here_month_day"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  How long have you lived here? (Month/Day only) *
-                </label>
-                {isSubmitted ? (
-                  <div className="mt-1 block w-full px-3 py-2 rounded-md border border-gray-300 bg-gray-50 text-gray-700">
-                    {livedHereMonthDay || presentAddressStartDate || 'Not provided'}
-                  </div>
-                ) : (
-                  <input
-                    type="text"
-                    id="lived_here_month_day"
-                    required
-                    value={livedHereMonthDay}
-                    onChange={async e => {
-                      let value = e.target.value
-                      // Format as MM-DD, only allow digits and dash
-                      value = value.replace(/[^\d-]/g, '')
-                      // Auto-format as user types: MM-DD
-                      if (value.length === 2 && !value.includes('-')) {
-                        value = value + '-'
+                <DatePicker
+                  label="How long have you lived here? (Month/Year) *"
+                  value={presentAddressStartDate}
+                  onChange={async value => {
+                    setPresentAddressStartDate(value)
+
+                    // When date is selected and we have address info, save to address_history
+                    if (
+                      value &&
+                      user &&
+                      formData.present_address_street &&
+                      formData.present_address_city
+                    ) {
+                      // Check if we need previous addresses (current < 3 years)
+                      const needsPrevious = checkIfNeedsPreviousAddresses(value)
+                      setNeedsPreviousAddresses(needsPrevious)
+
+                      // Update or add the present address
+                      const currentAddresses = await getAddressHistory(user.id)
+
+                      // Find if present address already exists in address_history
+                      const existingAddress = currentAddresses.find(
+                        addr =>
+                          addr.street === formData.present_address_street &&
+                          addr.city === formData.present_address_city &&
+                          addr.state === formData.present_address_state &&
+                          addr.zip === formData.present_address_zip &&
+                          !addr.end_date
+                      )
+
+                      if (existingAddress) {
+                        // Update existing address with new start date
+                        await updateAddressHistory(existingAddress.id, {
+                          start_date: value,
+                        })
+                      } else {
+                        // Add new address to history
+                        await addAddressHistory(user.id, {
+                          street: formData.present_address_street || '',
+                          city: formData.present_address_city || '',
+                          state: formData.present_address_state || '',
+                          zip: formData.present_address_zip || '',
+                          start_date: value,
+                          end_date: null,
+                        })
                       }
-                      // Limit to MM-DD format (5 characters: MM-DD)
-                      if (value.length <= 5) {
-                        setLivedHereMonthDay(value)
 
-                        // When valid month/day is entered, calculate the actual date
-                        if (
-                          value.length === 5 &&
-                          user &&
-                          formData.present_address_street &&
-                          formData.present_address_city
-                        ) {
-                          const [month, day] = value.split('-').map(Number)
+                      // Reload address history
+                      const updatedAddresses = await getAddressHistory(user.id)
+                      setAddressHistory(updatedAddresses)
 
-                          // Validate month (1-12) and day (1-31)
-                          if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-                            // Find the most recent year that makes this date valid and not in the future
-                            const today = new Date()
-                            let year = today.getFullYear()
-
-                            // Create date with current year
-                            let moveInDate = new Date(year, month - 1, day)
-
-                            // If this date is in the future, use last year
-                            if (moveInDate > today) {
-                              year = year - 1
-                              moveInDate = new Date(year, month - 1, day)
-                            }
-
-                            // Ensure day is valid for the month (e.g., Feb 30 -> Feb 28)
-                            const lastDayOfMonth = new Date(year, month, 0).getDate()
-                            const actualDay = Math.min(day, lastDayOfMonth)
-                            moveInDate = new Date(year, month - 1, actualDay)
-
-                            const dateString = moveInDate.toISOString().split('T')[0]
-                            setPresentAddressStartDate(dateString)
-
-                            // Check if present address move-in date alone is 3+ years from today
-                            const startMonth = moveInDate.getMonth()
-                            const startDay = moveInDate.getDate()
-                            const endMonth = today.getMonth()
-                            const endDay = today.getDate()
-
-                            let yearsDiff = today.getFullYear() - moveInDate.getFullYear()
-
-                            // Adjust if the end month/day hasn't occurred yet relative to start month/day
-                            if (
-                              endMonth < startMonth ||
-                              (endMonth === startMonth && endDay < startDay)
-                            ) {
-                              yearsDiff -= 1
-                            }
-
-                            // Add fractional year for the partial period
-                            const startDateInEndYear = new Date(
-                              today.getFullYear(),
-                              startMonth,
-                              startDay
-                            )
-                            const daysIntoYear =
-                              (today.getTime() - startDateInEndYear.getTime()) /
-                              (1000 * 60 * 60 * 24)
-                            const fractionalYear = daysIntoYear / 365.25
-
-                            const totalYearsFromToday = yearsDiff + Math.max(0, fractionalYear)
-                            const presentAddressAloneIs3PlusYears = totalYearsFromToday >= 3
-
-                            // First, update or add the present address
-                            const currentAddresses = await getAddressHistory(user.id)
-
-                            // Find if present address already exists in address_history
-                            const existingAddress = currentAddresses.find(
-                              addr =>
-                                addr.street === formData.present_address_street &&
-                                addr.city === formData.present_address_city &&
-                                addr.state === formData.present_address_state &&
-                                addr.zip === formData.present_address_zip &&
-                                !addr.end_date
-                            )
-
-                            if (existingAddress) {
-                              // Update existing address with new start date
-                              await updateAddressHistory(existingAddress.id, {
-                                start_date: dateString,
-                              })
-                            } else {
-                              // Add new address to history
-                              await addAddressHistory(user.id, {
-                                street: formData.present_address_street || '',
-                                city: formData.present_address_city || '',
-                                state: formData.present_address_state || '',
-                                zip: formData.present_address_zip || '',
-                                start_date: dateString,
-                                end_date: null,
-                              })
-                            }
-
-                            // Reload address history after update
-                            let updatedAddresses = await getAddressHistory(user.id)
-
-                            // If present address alone is 3+ years, delete all previous addresses
-                            if (presentAddressAloneIs3PlusYears) {
-                              const previousAddresses = updatedAddresses.filter(
-                                addr => addr.end_date !== null
-                              )
-                              for (const addr of previousAddresses) {
-                                await deleteAddressHistory(addr.id)
-                              }
-                              // Reload again after deletion
-                              updatedAddresses = await getAddressHistory(user.id)
-                              // Clear the previous address form
-                              setPreviousAddressForm({
-                                street: '',
-                                city: '',
-                                state: '',
-                                zip: '',
-                                start_date: '',
-                                end_date: '',
-                              })
-                            }
-
-                            // Update state and check requirement - this will update showAddressHistoryRequired
-                            setAddressHistory(updatedAddresses)
-                            const hasEnough = await checkAddressHistoryRequirement()
-
-                            // If less than 3 years, automatically show address form with move-out prefilled
-                            if (!hasEnough && !presentAddressAloneIs3PlusYears) {
-                              // Prefill move-out date with present address move-in date (use same month/day, year before)
-                              const moveOutYear = year - 1
-                              const moveOutDate = new Date(moveOutYear, month - 1, actualDay)
-                              const moveOutDateString = moveOutDate.toISOString().split('T')[0]
-                              setPreviousAddressForm(prev => ({
-                                ...prev,
-                                end_date: moveOutDateString,
-                              }))
-                            }
-                          }
-                        }
+                      // If we need previous addresses and form is empty, prefill move-out date
+                      if (needsPrevious && !previousAddressForm.end_date) {
+                        const moveInDateObj = new Date(value)
+                        const moveOutYear = moveInDateObj.getFullYear() - 1
+                        const moveOutMonth = moveInDateObj.getMonth()
+                        const moveOutDate = new Date(moveOutYear, moveOutMonth, 1)
+                        const moveOutDateString = moveOutDate.toISOString().split('T')[0]
+                        setPreviousAddressForm(prev => ({
+                          ...prev,
+                          end_date: moveOutDateString,
+                        }))
                       }
-                    }}
-                    placeholder="MM-DD (e.g., 03-15)"
-                    pattern="[0-1][0-9]-[0-3][0-9]"
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  />
-                )}
-                <p className="mt-1 text-xs text-gray-500">
-                  Enter month and day only (e.g., 03-15 for March 15th)
-                </p>
+                    }
+                  }}
+                  required
+                  max={new Date().toISOString().split('T')[0]}
+                  placeholder="Select month/year"
+                  monthYearOnly
+                  disabled={isSubmitted}
+                />
               </div>
             </div>
 
-            {/* Address History Requirement - Show automatically when less than 3 years */}
-            {(showAddressHistoryRequired ||
-              (presentAddressStartDate && !addressHistoryEvaluated)) &&
-              !isSubmitted && (
-                <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <p className="text-sm text-yellow-800 mb-4">
-                    <strong>Address history required:</strong> We need at least 3 years of address
-                    history. Please add your previous addresses below.
-                  </p>
+            {/* Show previous address form only if current address is less than 3 years */}
+            {needsPreviousAddresses && !isSubmitted && (
+              <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800 mb-4">
+                  <strong>Previous addresses needed:</strong> Since you've lived at your current
+                  address for less than 3 years, please add your previous addresses below.
+                </p>
 
-                  <div className="space-y-4">
-                    <h3 className="font-medium text-gray-900">Previous Address</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700">
-                          Street Address *
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={previousAddressForm.street || ''}
-                          onChange={e =>
-                            setPreviousAddressForm(prev => ({ ...prev, street: e.target.value }))
-                          }
-                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">City *</label>
-                        <input
-                          type="text"
-                          required
-                          value={previousAddressForm.city || ''}
-                          onChange={e =>
-                            setPreviousAddressForm(prev => ({ ...prev, city: e.target.value }))
-                          }
-                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">State *</label>
-                        <input
-                          type="text"
-                          required
-                          value={previousAddressForm.state || ''}
-                          onChange={e =>
-                            setPreviousAddressForm(prev => ({ ...prev, state: e.target.value }))
-                          }
-                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">
-                          ZIP Code *
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={previousAddressForm.zip || ''}
-                          onChange={e =>
-                            setPreviousAddressForm(prev => ({ ...prev, zip: e.target.value }))
-                          }
-                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div className="md:col-span-2">
-                        <DatePicker
-                          label="Move-In Date (Month/Year) *"
-                          value={previousAddressForm.start_date || ''}
-                          onChange={value =>
-                            setPreviousAddressForm(prev => ({ ...prev, start_date: value }))
-                          }
-                          required
-                          max={
-                            previousAddressForm.end_date || new Date().toISOString().split('T')[0]
-                          }
-                          placeholder="Select move-in month/year"
-                          monthYearOnly
-                        />
-                      </div>
-                      <div className="md:col-span-2">
-                        <DatePicker
-                          label="Move-Out Date (Month/Year) *"
-                          value={previousAddressForm.end_date || ''}
-                          onChange={value =>
-                            setPreviousAddressForm(prev => ({ ...prev, end_date: value }))
-                          }
-                          required
-                          min={previousAddressForm.start_date}
-                          max={presentAddressStartDate || new Date().toISOString().split('T')[0]}
-                          placeholder="Select move-out month/year"
-                          monthYearOnly
-                        />
-                      </div>
+                <div className="space-y-4">
+                  <h3 className="font-medium text-gray-900">Previous Address</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Street Address *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={previousAddressForm.street || ''}
+                        onChange={e =>
+                          setPreviousAddressForm(prev => ({ ...prev, street: e.target.value }))
+                        }
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      />
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleAddPreviousAddress}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium"
-                    >
-                      Add Previous Address
-                    </button>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">City *</label>
+                      <input
+                        type="text"
+                        required
+                        value={previousAddressForm.city || ''}
+                        onChange={e =>
+                          setPreviousAddressForm(prev => ({ ...prev, city: e.target.value }))
+                        }
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">State *</label>
+                      <input
+                        type="text"
+                        required
+                        value={previousAddressForm.state || ''}
+                        onChange={e =>
+                          setPreviousAddressForm(prev => ({ ...prev, state: e.target.value }))
+                        }
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">ZIP Code *</label>
+                      <input
+                        type="text"
+                        required
+                        value={previousAddressForm.zip || ''}
+                        onChange={e =>
+                          setPreviousAddressForm(prev => ({ ...prev, zip: e.target.value }))
+                        }
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <DatePicker
+                        label="Move-In Date (Month/Year) *"
+                        value={previousAddressForm.start_date || ''}
+                        onChange={value =>
+                          setPreviousAddressForm(prev => ({ ...prev, start_date: value }))
+                        }
+                        required
+                        max={previousAddressForm.end_date || new Date().toISOString().split('T')[0]}
+                        placeholder="Select move-in month/year"
+                        monthYearOnly
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <DatePicker
+                        label="Move-Out Date (Month/Year) *"
+                        value={previousAddressForm.end_date || ''}
+                        onChange={value =>
+                          setPreviousAddressForm(prev => ({ ...prev, end_date: value }))
+                        }
+                        required
+                        min={previousAddressForm.start_date}
+                        max={presentAddressStartDate || new Date().toISOString().split('T')[0]}
+                        placeholder="Select move-out month/year"
+                        monthYearOnly
+                      />
+                    </div>
                   </div>
-
-                  {/* Show existing address history */}
-                  {addressHistory.filter(addr => addr.end_date !== null).length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-yellow-300">
-                      <h4 className="font-medium text-gray-900 mb-2">Address History</h4>
-                      <div className="space-y-2">
-                        {addressHistory
-                          .filter(addr => addr.end_date !== null)
-                          .sort(
-                            (a, b) =>
-                              new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
-                          )
-                          .map((addr, idx) => (
-                            <div key={idx} className="text-sm text-gray-700">
-                              {addr.street}, {addr.city}, {addr.state} {addr.zip} -{' '}
-                              {new Date(addr.start_date).toLocaleDateString()} to{' '}
-                              {new Date(addr.end_date!).toLocaleDateString()}
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  )}
+                  <button
+                    type="button"
+                    onClick={handleAddPreviousAddress}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium"
+                  >
+                    Add Previous Address
+                  </button>
                 </div>
-              )}
+
+                {/* Show existing address history */}
+                {addressHistory.filter(addr => addr.end_date !== null).length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-yellow-300">
+                    <h4 className="font-medium text-gray-900 mb-2">Address History</h4>
+                    <div className="space-y-2">
+                      {addressHistory
+                        .filter(addr => addr.end_date !== null)
+                        .sort(
+                          (a, b) =>
+                            new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
+                        )
+                        .map((addr, idx) => (
+                          <div key={idx} className="text-sm text-gray-700">
+                            {addr.street}, {addr.city}, {addr.state} {addr.zip} -{' '}
+                            {new Date(addr.start_date).toLocaleDateString()} to{' '}
+                            {new Date(addr.end_date!).toLocaleDateString()}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )
       case 3:
@@ -1010,8 +844,7 @@ export function ProfileCreationPage() {
             >
               Previous
             </button>
-            {step < 3 &&
-            !(step === 2 && (!addressHistoryEvaluated || showAddressHistoryRequired)) ? (
+            {step < 3 ? (
               <button
                 type="button"
                 onClick={async e => {
@@ -1056,44 +889,11 @@ export function ProfileCreationPage() {
                       })
 
                       if (isValid) {
-                        // For step 2, ALWAYS check address history requirement BEFORE proceeding
-                        if (step === 2) {
-                          // Reload address history first to ensure we have the latest data
-                          if (user) {
-                            const updatedAddresses = await getAddressHistory(user.id)
-                            setAddressHistory(updatedAddresses)
-                          }
-                          const hasEnoughHistory = await checkAddressHistoryRequirement()
-                          // If address history is less than 3 years, prevent proceeding
-                          if (!hasEnoughHistory) {
-                            alert(
-                              'Please provide at least 3 years of address history before continuing.'
-                            )
-                            return
-                          }
-                        }
-
                         // Save current step data before proceeding
                         setLoading(true)
                         const saved = await saveCurrentStep(step)
 
                         if (saved) {
-                          // Double-check for step 2 before proceeding to ensure we don't skip validation
-                          if (step === 2) {
-                            // Reload and check again
-                            if (user) {
-                              const updatedAddresses = await getAddressHistory(user.id)
-                              setAddressHistory(updatedAddresses)
-                            }
-                            const hasEnoughHistory = await checkAddressHistoryRequirement()
-                            if (!hasEnoughHistory) {
-                              setLoading(false)
-                              alert(
-                                'Please provide at least 3 years of address history before continuing.'
-                              )
-                              return
-                            }
-                          }
                           setStep(step + 1)
                         } else {
                           // Show error if save failed

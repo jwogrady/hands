@@ -8,6 +8,7 @@ import type { Application, Job, Profile } from '../../../types'
 export function ApplicationsDashboardPage() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [applications, setApplications] = useState<
     (Application & { job?: Job; candidate?: Profile })[]
   >([])
@@ -21,6 +22,7 @@ export function ApplicationsDashboardPage() {
 
   const loadApplications = async () => {
     setLoading(true)
+    setError(null)
     try {
       const apps = await getAllApplications()
 
@@ -31,13 +33,20 @@ export function ApplicationsDashboardPage() {
             getJob(app.job_id),
             getProfile(app.candidate_id),
           ])
-          return { ...app, job, candidate }
+          return {
+            ...app,
+            job: job || undefined,
+            candidate: candidate || undefined,
+          }
         })
       )
 
       setApplications(appsWithDetails)
     } catch (error) {
       console.error('Error loading applications:', error)
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to load applications. Please try again.'
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -76,6 +85,38 @@ export function ApplicationsDashboardPage() {
 
   if (loading) {
     return <div className="max-w-7xl mx-auto p-6">Loading...</div>
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-7xl mx-auto p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+          <div className="flex items-start">
+            <svg
+              className="w-5 h-5 text-red-600 mt-0.5 mr-3 flex-shrink-0"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <div className="flex-1">
+              <h3 className="font-semibold text-red-900">Error Loading Applications</h3>
+              <p className="text-sm text-red-800 mt-1">{error}</p>
+              <button
+                onClick={loadApplications}
+                className="mt-4 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm font-medium transition-colors"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (

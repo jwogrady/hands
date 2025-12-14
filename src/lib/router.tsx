@@ -4,6 +4,7 @@ import { LoginPage } from '@/features/auth/pages/LoginPage'
 import { SignUpPage } from '@/features/auth/pages/SignUpPage'
 import { HomePage } from '@/features/home/pages/HomePage'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
+import { ManagerRoute } from '@/components/auth/ManagerRoute'
 import { ProfileCreationPage } from '@/features/profile/pages/ProfileCreationPage'
 import { EmploymentHistoryPage } from '@/features/profile/pages/EmploymentHistoryPage'
 import { CDLDrivingExperiencePage } from '@/features/profile/pages/CDLDrivingExperiencePage'
@@ -148,14 +149,14 @@ const authorizationsRoute = createRoute({
   ),
 })
 
-// Job routes (protected)
+// Job routes (protected - managers only for management, candidates can browse)
 const jobsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/jobs',
   component: () => (
-    <ProtectedRoute>
+    <ManagerRoute>
       <JobPostingListPage />
-    </ProtectedRoute>
+    </ManagerRoute>
   ),
 })
 
@@ -163,9 +164,9 @@ const jobsCreateRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/jobs/create',
   component: () => (
-    <ProtectedRoute>
+    <ManagerRoute>
       <JobPostingFormPage />
-    </ProtectedRoute>
+    </ManagerRoute>
   ),
 })
 
@@ -173,9 +174,9 @@ const jobsEditRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/jobs/$jobId/edit',
   component: () => (
-    <ProtectedRoute>
+    <ManagerRoute>
       <JobPostingFormPage />
-    </ProtectedRoute>
+    </ManagerRoute>
   ),
 })
 
@@ -211,14 +212,14 @@ const applicationsRoute = createRoute({
   ),
 })
 
-// Manager routes (protected)
+// Manager routes (protected - managers only)
 const managerCandidatesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/manager/candidates',
   component: () => (
-    <ProtectedRoute>
+    <ManagerRoute>
       <CandidatesDashboardPage />
-    </ProtectedRoute>
+    </ManagerRoute>
   ),
 })
 
@@ -226,9 +227,9 @@ const managerCandidateDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/manager/candidates/$candidateId',
   component: () => (
-    <ProtectedRoute>
+    <ManagerRoute>
       <CandidateDetailPage />
-    </ProtectedRoute>
+    </ManagerRoute>
   ),
 })
 
@@ -236,9 +237,9 @@ const managerApplicationsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/manager/applications',
   component: () => (
-    <ProtectedRoute>
+    <ManagerRoute>
       <ApplicationsDashboardPage />
-    </ProtectedRoute>
+    </ManagerRoute>
   ),
 })
 
@@ -246,9 +247,9 @@ const managerApplicationReviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/manager/applications/$applicationId',
   component: () => (
-    <ProtectedRoute>
+    <ManagerRoute>
       <ApplicationReviewPage />
-    </ProtectedRoute>
+    </ManagerRoute>
   ),
 })
 

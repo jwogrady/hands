@@ -1,5 +1,5 @@
--- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Note: Using gen_random_uuid() which is built-in to PostgreSQL 13+
+-- No extension needed for UUID generation
 
 -- Create profiles table (extends Supabase auth.users)
 CREATE TABLE profiles (
@@ -14,7 +14,7 @@ CREATE TABLE profiles (
 
 -- Create user_roles table
 CREATE TABLE user_roles (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   role TEXT NOT NULL CHECK (role IN ('candidate', 'manager')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -23,7 +23,7 @@ CREATE TABLE user_roles (
 
 -- Create jobs table
 CREATE TABLE jobs (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title TEXT NOT NULL,
   description TEXT NOT NULL,
   requirements TEXT,
@@ -35,7 +35,7 @@ CREATE TABLE jobs (
 
 -- Create job_questions table (for dynamic job-specific questions)
 CREATE TABLE job_questions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
   question TEXT NOT NULL,
   question_type TEXT NOT NULL CHECK (question_type IN ('text', 'textarea', 'select', 'checkbox')),
@@ -47,7 +47,7 @@ CREATE TABLE job_questions (
 
 -- Create applications table
 CREATE TABLE applications (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
   candidate_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   status TEXT NOT NULL DEFAULT 'submitted' CHECK (status IN ('submitted', 'under_review', 'approved', 'rejected', 'more_info_requested')),
@@ -61,7 +61,7 @@ CREATE TABLE applications (
 
 -- Create application_answers table (for job-specific question answers)
 CREATE TABLE application_answers (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   application_id UUID NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
   question_id UUID NOT NULL REFERENCES job_questions(id) ON DELETE CASCADE,
   answer TEXT NOT NULL,
@@ -135,6 +135,26 @@ CREATE POLICY "Managers can view all profiles"
 CREATE POLICY "Users can view own roles"
   ON user_roles FOR SELECT
   USING (auth.uid() = user_id);
+
+-- Create a SECURITY DEFINER function to check if user is manager (bypasses RLS to avoid recursion)
+CREATE OR REPLACE FUNCTION public.is_manager(user_uuid UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_roles
+    WHERE user_id = user_uuid
+    AND role = 'manager'
+  );
+$$;
+
+-- Managers can view all user roles
+-- Uses is_manager() function to avoid infinite recursion (function bypasses RLS)
+CREATE POLICY "Managers can view all roles"
+  ON user_roles FOR SELECT
+  USING (public.is_manager(auth.uid()));
 
 -- RLS Policies for jobs
 -- Anyone can view active jobs
